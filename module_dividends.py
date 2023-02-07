@@ -107,10 +107,13 @@ def get_dividend_table_extended(acao = 'PETR4'):
         response = requests.get(f'https://statusinvest.com.br/acao/companytickerprovents?ticker={acao}&chartProventsType=2', timeout = 3, verify = True, headers = headers)
         json_obj = json.loads(response.text)
         dividend_df = pd.DataFrame(json_obj.get('assetEarningsModels', {}))
-        dividend_df.drop(['y', 'm', 'd', 'etd', 'sv', 'sov', 'adj'], axis = 1, inplace = True)
-        dividend_df.rename(columns={"ed": "DATA COM", "pd": "Pagamento", 'v': 'Valor', 'et': 'Tipo'}, inplace = True)
-        dividend_df.insert(0, 'Acao', acao)
-        dividend_df = dividend_df[['Acao', 'Tipo', 'DATA COM', 'Pagamento', 'Valor']]
+        try:
+            dividend_df.drop(['y', 'm', 'd', 'etd', 'sv', 'sov', 'adj'], axis = 1, inplace = True)
+            dividend_df.rename(columns={"ed": "DATA COM", "pd": "Pagamento", 'v': 'Valor', 'et': 'Tipo'}, inplace = True)
+            dividend_df.insert(0, 'Acao', acao)
+            dividend_df = dividend_df[['Acao', 'Tipo', 'DATA COM', 'Pagamento', 'Valor']]
+        except:
+            print('It was not possible to rearrange dataframe')
         return dividend_df
     
     except Exception as err:
