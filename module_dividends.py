@@ -120,6 +120,20 @@ def get_dividend_table_extended(acao = 'PETR4'):
         print("Couldn't get table. Error: ", err)
         return pd.DataFrame()
 
+def get_ceiling_price(asset = 'ITSA4', years = 5, dy = 0.08):
+    now = datetime.now()
+    ceiling_date = date(now.year - 1, 12, 31).strftime("%Y-%m-%d")
+    floor_date = date(now.year - years, 1, 1).strftime("%Y-%m-%d")
+    dividend_table = get_dividend_table_extended(asset)
+    dividend_table['Pagamento'] = pd.to_datetime(dividend_table['Pagamento'], format='%d/%m/%Y')
+    dividend_table['DATA COM'] = pd.to_datetime(dividend_table['DATA COM'], format='%d/%m/%Y')
+    dividend_table = dividend_table[(dividend_table['Pagamento'] >= floor_date)]
+    dividend_table = dividend_table[(dividend_table['Pagamento'] <= ceiling_date)]
+    print(dividend_table)
+    ceiling_price = (dividend_table['Valor'].sum()/years)/dy
+    return ceiling_price
+
+
 user_agents = [ 
 	'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36', 
 	'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/92.0.4515.107 Safari/537.36', 
@@ -141,3 +155,4 @@ user_agents = [
     'Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:15.0) Gecko/20100101 Firefox/15.0.1'
 ] 
 
+print(get_ceiling_price())
