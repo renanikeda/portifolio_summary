@@ -1,6 +1,7 @@
 from bs4 import BeautifulSoup
 from datetime import datetime, date
 import pandas as pd
+import json
 import requests
 import urllib3
 import random 
@@ -83,6 +84,33 @@ def get_dividend_table(acao = 'PETR4'):
         dividend_df['Valor'] = dividend_df['Valor'].apply(treat_numbers)
         #dividend_df['Pagamento'] = dividend_df['Pagamento'].apply(lambda pagamento: datetime.strptime(pagamento, "%d/%m/%Y"))
         #dividend_df['DATA COM'] = dividend_df['DATA COM'].apply(lambda pagamento: datetime.strptime(pagamento, "%d/%m/%Y"))
+        return dividend_df
+    
+    except Exception as err:
+        print("Couldn't get table. Error: ", err)
+        return pd.DataFrame()
+
+def get_dividend_table_extended(acao = 'PETR4'):
+    try:
+        headers = {
+            'authority': 'statusinvest.com.br',
+            'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9',
+            'accept-language': 'pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7',
+            'dnt': '1',
+            'sec-ch-ua': '"Chromium";v="106", "Google Chrome";v="106", "Not;A=Brand";v="99"',
+            'sec-ch-ua-platform': '"Windows"',
+            'upgrade-insecure-requests': '1',
+            'user-agent': '',
+        }
+        user_agent = random.choice(user_agents)  
+        headers['user-agent'] = user_agent
+        response = requests.get(f'https://statusinvest.com.br/acao/companytickerprovents?ticker={acao}&chartProventsType=2', timeout = 3, verify = True, headers = headers)
+        json_obj = json.loads(response.text)
+        dividend_df = pd.DataFrame(json_obj.get('assetEarningsModels', {}))
+        dividend_df.drop(['y', 'm', 'd', 'etd', 'sv', 'sov', 'adj'], axis = 1, inplace = True)
+        dividend_df.rename(columns={"ed": "DATA COM", "pd": "Pagamento", 'v': 'Valor', 'et': 'Tipo'}, inplace = True)
+        dividend_df.insert(0, 'Acao', acao)
+        dividend_df = dividend_df[['Acao', 'Tipo', 'DATA COM', 'Pagamento', 'Valor']]
         return dividend_df
     
     except Exception as err:
