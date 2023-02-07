@@ -125,11 +125,12 @@ def get_ceiling_price(asset = 'ITSA4', years = 5, dy = 0.08):
     ceiling_date = date(now.year - 1, 12, 31).strftime("%Y-%m-%d")
     floor_date = date(now.year - years, 1, 1).strftime("%Y-%m-%d")
     dividend_table = get_dividend_table_extended(asset)
+    dividend_table.replace('-', date(now.year + 1, 12, 31).strftime("%d/%m/%Y"), inplace = True)
     dividend_table['Pagamento'] = pd.to_datetime(dividend_table['Pagamento'], format='%d/%m/%Y')
     dividend_table['DATA COM'] = pd.to_datetime(dividend_table['DATA COM'], format='%d/%m/%Y')
     dividend_table = dividend_table[(dividend_table['Pagamento'] >= floor_date)]
     dividend_table = dividend_table[(dividend_table['Pagamento'] <= ceiling_date)]
-    ceiling_price = (dividend_table['Valor'].sum()/years)/dy
+    ceiling_price = round((dividend_table['Valor'].sum()/years)/dy, 2)
     return ceiling_price
 
 
