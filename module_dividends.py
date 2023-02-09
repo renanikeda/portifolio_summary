@@ -36,9 +36,9 @@ def treat_numbers(value):
         return float(value)
     return value
 
-def treat_data(data):
+def treat_date(data, format = "%d/%m/%Y", remove_time = True):
     try:
-        return datetime.strptime(data, "%d/%m/%Y")
+        return datetime.strptime(data, format)
     except:
         return date(1900,1,1)
 
@@ -49,25 +49,27 @@ def try_get_dividend_table(acao = "PETR4", limit = 5):
     while (dividend_table.empty and attempt < limit):
         if attempt > 1 : print(f"Tentativa {attempt}")
         time.sleep(attempt*backoff)
-        dividend_table = get_dividend_table(acao)
+        dividend_table = get_dividend_table_extended(acao)
         attempt += 1
     return dividend_table
 
-def get_dividend_table(acao = 'PETR4'):
+def get_stock_price_series(stock = 'ITSA4'):
+    headers = generate_header()
+    response = requests.post('https://statusinvest.com.br/acao/tickerprice', data = { 'ticker': stock, 'type': 4 }, headers = headers)
+    resp_obj = json.loads(response.text)
+    prices_df = pd.DataFrame(resp_obj[0].get('prices', ''))
+    prices_df['date'] = prices_df['date'].apply(lambda date: treat_date(date, "%d/%m/%y %H:%M").date())
+    return prices_df
+
+def get_mean_price(stock, data_ref):
+    price_series = get_stock_price_series(stock)
+    price_series = price_series[(price_series['date'] == data_ref)]
+    return price_series['price'].mean()
+
+def get_dividend_table(stock = 'PETR4'):
     try:
-        headers = {
-            'authority': 'statusinvest.com.br',
-            'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9',
-            'accept-language': 'pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7',
-            'dnt': '1',
-            'sec-ch-ua': '"Chromium";v="106", "Google Chrome";v="106", "Not;A=Brand";v="99"',
-            'sec-ch-ua-platform': '"Windows"',
-            'upgrade-insecure-requests': '1',
-            'user-agent': '',
-        }
-        user_agent = random.choice(user_agents) 
-        headers['user-agent'] = user_agent
-        response = requests.get(f'https://statusinvest.com.br/acoes/{acao}', timeout = 3, verify = True, headers = headers)
+        headers = generate_header()
+        response = requests.get(f'https://statusinvest.com.br/acoes/{stock}', timeout = 3, verify = True, headers = headers)
         soup = BeautifulSoup(response.text, "html.parser")
 
         tables = soup.find_all('table')
@@ -76,11 +78,11 @@ def get_dividend_table(acao = 'PETR4'):
         for table in tables:
             if table.th.attrs.get("title") == 'Tipo do provento': 
                 dividend_table = table
-                print(f"{acao} Dividend Table Found")
+                print(f"{stock} Dividend Table Found")
                 continue
             
         dividend_df = pd.read_html(str(dividend_table), decimal=',', thousands='.')[0]
-        dividend_df.insert(0, 'Acao', acao)
+        dividend_df.insert(0, 'Acao', stock)
         dividend_df['Valor'] = dividend_df['Valor'].apply(treat_numbers)
         #dividend_df['Pagamento'] = dividend_df['Pagamento'].apply(lambda pagamento: datetime.strptime(pagamento, "%d/%m/%Y"))
         #dividend_df['DATA COM'] = dividend_df['DATA COM'].apply(lambda pagamento: datetime.strptime(pagamento, "%d/%m/%Y"))
@@ -90,30 +92,19 @@ def get_dividend_table(acao = 'PETR4'):
         print("Couldn't get table. Error: ", err)
         return pd.DataFrame()
 
-def get_dividend_table_extended(acao = 'PETR4'):
+def get_dividend_table_extended(stock = 'PETR4'):
     try:
-        headers = {
-            'authority': 'statusinvest.com.br',
-            'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9',
-            'accept-language': 'pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7',
-            'dnt': '1',
-            'sec-ch-ua': '"Chromium";v="106", "Google Chrome";v="106", "Not;A=Brand";v="99"',
-            'sec-ch-ua-platform': '"Windows"',
-            'upgrade-insecure-requests': '1',
-            'user-agent': '',
-        }
-        user_agent = random.choice(user_agents)  
-        headers['user-agent'] = user_agent
-        response = requests.get(f'https://statusinvest.com.br/acao/companytickerprovents?ticker={acao}&chartProventsType=2', timeout = 3, verify = True, headers = headers)
+        headers = generate_header()
+        response = requests.get(f'https://statusinvest.com.br/acao/companytickerprovents?ticker={stock}&chartProventsType=2', timeout = 3, verify = True, headers = headers)
         json_obj = json.loads(response.text)
         dividend_df = pd.DataFrame(json_obj.get('assetEarningsModels', {}))
         try:
             dividend_df.drop(['y', 'm', 'd', 'etd', 'sv', 'sov', 'adj'], axis = 1, inplace = True)
             dividend_df.rename(columns={"ed": "DATA COM", "pd": "Pagamento", 'v': 'Valor', 'et': 'Tipo'}, inplace = True)
-            dividend_df.insert(0, 'Acao', acao)
+            dividend_df.insert(0, 'Acao', stock)
             dividend_df = dividend_df[['Acao', 'Tipo', 'DATA COM', 'Pagamento', 'Valor']]
         except:
-            print('It was not possible to rearrange dataframe')
+            print(f'It was not possible to rearrange dataframe or found {stock}')
         return dividend_df
     
     except Exception as err:
@@ -126,13 +117,29 @@ def get_ceiling_price(asset = 'ITSA4', years = 5, dy = 0.08):
     floor_date = date(now.year - years, 1, 1).strftime("%Y-%m-%d")
     dividend_table = get_dividend_table_extended(asset)
     dividend_table.replace('-', date(now.year + 1, 12, 31).strftime("%d/%m/%Y"), inplace = True)
-    dividend_table['Pagamento'] = pd.to_datetime(dividend_table['Pagamento'], format='%d/%m/%Y')
-    dividend_table['DATA COM'] = pd.to_datetime(dividend_table['DATA COM'], format='%d/%m/%Y')
+    #dividend_table['Pagamento'] = pd.to_datetime(dividend_table['Pagamento'], format='%d/%m/%Y')
+    #dividend_table['DATA COM'] = pd.to_datetime(dividend_table['DATA COM'], format='%d/%m/%Y')
+    dividend_table['Pagamento'] = dividend_table['Pagamento'].apply(treat_date)
+    dividend_table['DATA COM'] = dividend_table['DATA COM'].apply(treat_date)
     dividend_table = dividend_table[(dividend_table['Pagamento'] >= floor_date)]
     dividend_table = dividend_table[(dividend_table['Pagamento'] <= ceiling_date)]
     ceiling_price = round((dividend_table['Valor'].sum()/years)/dy, 2)
     return ceiling_price
 
+def generate_header():
+    headers = {
+        'authority': 'statusinvest.com.br',
+        'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9',
+        'accept-language': 'pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7',
+        'dnt': '1',
+        'sec-ch-ua': '"Chromium";v="106", "Google Chrome";v="106", "Not;A=Brand";v="99"',
+        'sec-ch-ua-platform': '"Windows"',
+        'upgrade-insecure-requests': '1',
+        'user-agent': '',
+    }
+    user_agent = random.choice(user_agents)  
+    headers['user-agent'] = user_agent
+    return headers
 
 user_agents = [ 
 	'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36', 

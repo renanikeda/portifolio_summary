@@ -1,4 +1,4 @@
-from module_dividends import get_stock_list, try_get_dividend_table, treat_data, get_ceiling_price
+from module_dividends import get_stock_list, try_get_dividend_table, treat_date, get_ceiling_price, get_mean_price
 from datetime import datetime
 import pandas as pd
 import time
@@ -14,7 +14,8 @@ print(f"Stock List: {stock_list}")
     
 stock_quantity = wallet_info[['stock', 'quantity']]
 stock_quantity.columns = ['Acao', 'Quantidade']
-stock_quantity['Preco Teto'] = ''
+stock_quantity['Preço Médio'] = ''
+stock_quantity['Preco Teto'] = ""
 writer = pd.ExcelWriter("proximos_dividendos.xlsx", engine = 'openpyxl', mode = 'a', date_format = "%d/%m/%Y", if_sheet_exists = 'overlay' )
 
 for stock in stock_list:
@@ -22,12 +23,14 @@ for stock in stock_list:
     if(dividend_table is None):
         continue
     #time.sleep(1.5)
-    dividend_table = dividend_table[dividend_table['Pagamento'].apply(treat_data) >= today]
+    dividend_table = dividend_table[dividend_table['Pagamento'].apply(treat_date) >= today]
     total_dividend_table = pd.concat([total_dividend_table, dividend_table.copy()])
 
-    ceiling_price = get_ceiling_price(stock)
+    ceiling_price = get_ceiling_price(stock, 5, 0.07)
+    mean_price = get_mean_price(stock, datetime.now().date())
     index_row = stock_quantity[stock_quantity['Acao'] == stock].index
     stock_quantity.loc[index_row, 'Preco Teto'] = ceiling_price
+    stock_quantity.loc[index_row, 'Preco Medio'] = mean_price
 
 stock_quantity.to_excel(writer, sheet_name="Quantidades", index = False)
 
@@ -35,5 +38,6 @@ total_dividend_table = total_dividend_table.join(stock_quantity.set_index('Acao'
 total_dividend_table["A receber"] = total_dividend_table['Quantidade'] * total_dividend_table['Valor']
 total_dividend_table.to_excel(writer, sheet_name = "Dividendos", index = False, float_format="%.2f")
 
+print(stock_quantity)
 print(total_dividend_table)
 writer.save()
