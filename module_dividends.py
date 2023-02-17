@@ -13,12 +13,17 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 stock_list = ["BBAS3", "BRAP4", "BRKM5", "CPLE6", "ITSA4", "PETR4", "TAEE11", "TRPL4", "USIM5"]
 fii_list = []
 
+def add_stocks(wallet, stocks):
+    wallet_cols = wallet.columns.to_list()
+    new_stocks = pd.DataFrame([[stock, *[0]*(len(wallet_cols) - 1)] for stock in stocks], columns = wallet_cols)
+    return pd.concat([wallet, new_stocks], ignore_index=True)
+
 def get_stock_list(file = "PosicaoDetalhada.xlsx"):
     data = pd.read_excel(file, engine='openpyxl', header=7)
     
     last_row = 0
     for row in data.iterrows():
-        print(row[1][0])
+        #print(row[1][0])
         if row[1][0].strip() == '':
             last_row = row[0]
             break
@@ -49,7 +54,7 @@ def try_get_dividend_table(acao = "PETR4", limit = 5):
     while (dividend_table.empty and attempt < limit):
         if attempt > 1 : print(f"Tentativa {attempt}")
         time.sleep(attempt*backoff)
-        dividend_table = get_dividend_table_extended(acao)
+        dividend_table = get_dividend_table(acao, verbose = True)
         attempt += 1
     return dividend_table
 
@@ -66,33 +71,7 @@ def get_mean_price(stock, data_ref):
     price_series = price_series[(price_series['date'] == data_ref)]
     return price_series['price'].mean()
 
-def get_dividend_table(stock = 'PETR4'):
-    try:
-        headers = generate_header()
-        response = requests.get(f'https://statusinvest.com.br/acoes/{stock}', timeout = 3, verify = True, headers = headers)
-        soup = BeautifulSoup(response.text, "html.parser")
-
-        tables = soup.find_all('table')
-        dividend_table = None
-
-        for table in tables:
-            if table.th.attrs.get("title") == 'Tipo do provento': 
-                dividend_table = table
-                print(f"{stock} Dividend Table Found")
-                continue
-            
-        dividend_df = pd.read_html(str(dividend_table), decimal=',', thousands='.')[0]
-        dividend_df.insert(0, 'Acao', stock)
-        dividend_df['Valor'] = dividend_df['Valor'].apply(treat_numbers)
-        #dividend_df['Pagamento'] = dividend_df['Pagamento'].apply(lambda pagamento: datetime.strptime(pagamento, "%d/%m/%Y"))
-        #dividend_df['DATA COM'] = dividend_df['DATA COM'].apply(lambda pagamento: datetime.strptime(pagamento, "%d/%m/%Y"))
-        return dividend_df
-    
-    except Exception as err:
-        print("Couldn't get table. Error: ", err)
-        return pd.DataFrame()
-
-def get_dividend_table_extended(stock = 'PETR4'):
+def get_dividend_table(stock = 'PETR4', verbose = False):
     try:
         headers = generate_header()
         response = requests.get(f'https://statusinvest.com.br/acao/companytickerprovents?ticker={stock}&chartProventsType=2', timeout = 3, verify = True, headers = headers)
@@ -103,6 +82,7 @@ def get_dividend_table_extended(stock = 'PETR4'):
             dividend_df.rename(columns={"ed": "DATA COM", "pd": "Pagamento", 'v': 'Valor', 'et': 'Tipo'}, inplace = True)
             dividend_df.insert(0, 'Acao', stock)
             dividend_df = dividend_df[['Acao', 'Tipo', 'DATA COM', 'Pagamento', 'Valor']]
+            if verbose: print(f'{stock} Table Found!')
         except:
             print(f'It was not possible to rearrange dataframe or found {stock}')
         return dividend_df
@@ -111,11 +91,11 @@ def get_dividend_table_extended(stock = 'PETR4'):
         print("Couldn't get table. Error: ", err)
         return pd.DataFrame()
 
-def get_ceiling_price(asset = 'ITSA4', years = 5, dy = 0.08):
+def get_ceiling_price(asset = 'ITSA4', years = 5, dy = 0.065):
     now = datetime.now()
     ceiling_date = date(now.year - 1, 12, 31).strftime("%Y-%m-%d")
     floor_date = date(now.year - years, 1, 1).strftime("%Y-%m-%d")
-    dividend_table = get_dividend_table_extended(asset)
+    dividend_table = get_dividend_table(asset)
     dividend_table.replace('-', date(now.year + 1, 12, 31).strftime("%d/%m/%Y"), inplace = True)
     #dividend_table['Pagamento'] = pd.to_datetime(dividend_table['Pagamento'], format='%d/%m/%Y')
     #dividend_table['DATA COM'] = pd.to_datetime(dividend_table['DATA COM'], format='%d/%m/%Y')
@@ -123,7 +103,11 @@ def get_ceiling_price(asset = 'ITSA4', years = 5, dy = 0.08):
     dividend_table['DATA COM'] = dividend_table['DATA COM'].apply(treat_date)
     dividend_table = dividend_table[(dividend_table['Pagamento'] >= floor_date)]
     dividend_table = dividend_table[(dividend_table['Pagamento'] <= ceiling_date)]
-    ceiling_price = round((dividend_table['Valor'].sum()/years)/dy, 2)
+    min_date = dividend_table['Pagamento'].min()
+    max_date = dividend_table['Pagamento'].max()
+    diff_years = (max_date.year - min_date.year + 1)
+    min_years = years if years <= diff_years else diff_years
+    ceiling_price = round((dividend_table['Valor'].sum()/min_years)/dy, 2)
     return ceiling_price
 
 def generate_header():
