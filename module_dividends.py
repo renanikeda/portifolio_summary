@@ -1,5 +1,6 @@
 from bs4 import BeautifulSoup
-from datetime import datetime, date
+from random_user_agent.user_agent import UserAgent
+from datetime import datetime, date, timedelta
 import pandas as pd
 import json
 import requests
@@ -47,30 +48,56 @@ def treat_date(data, format = "%d/%m/%Y", remove_time = True):
     except:
         return date(1900,1,1)
 
-def try_get_dividend_table(acao = "PETR4", limit = 5):
+def try_get_dividend_table(acao = "PETR4", limit = 5, verbose = False):
     dividend_table = pd.DataFrame()
     backoff = 1
-    attempt = 1
+    attempt = 0
     while (dividend_table.empty and attempt < limit):
-        if attempt > 1 : print(f"Tentativa {attempt}")
+        if attempt > 0 : print(f"Attempt {attempt} to get dividend table {acao}")
         time.sleep(attempt*backoff)
-        dividend_table = get_dividend_table(acao, verbose = True)
+        dividend_table = get_dividend_table(acao, verbose)
         attempt += 1
     return dividend_table
 
-def get_stock_price_series(stock = 'ITSA4'):
-    headers = generate_header()
-    response = requests.post('https://statusinvest.com.br/acao/tickerprice', data = { 'ticker': stock, 'type': 4 }, headers = headers)
-    resp_obj = json.loads(response.text)
-    prices_df = pd.DataFrame(resp_obj[0].get('prices', ''))
-    prices_df['date'] = prices_df['date'].apply(lambda date: treat_date(date, "%d/%m/%y %H:%M").date())
+def try_get_stock_price_series(stock = "PETR4", limit = 5):
+    prices_df = pd.DataFrame()
+    backoff = 1
+    attempt = 0
+    while (prices_df.empty and attempt < limit):
+        if attempt > 0 : print(f"Attempt {attempt} to get stock price series {stock}")
+        time.sleep(attempt*backoff)
+        prices_df = get_stock_price_series(stock)
+        attempt += 1
     return prices_df
 
+def get_stock_price_series(stock = 'ITSA4'):
+    try:
+        headers = generate_header()
+        response = requests.post('https://statusinvest.com.br/acao/tickerprice', data = { 'ticker': stock, 'type': 4 }, headers = headers)
+        resp_obj = json.loads(response.text)
+        prices_df = pd.DataFrame(resp_obj[0].get('prices', ''))
+        prices_df['date'] = prices_df['date'].apply(lambda date: treat_date(date, "%d/%m/%y %H:%M").date())
+        return prices_df
+    except Exception as err:
+        print(f"Couldn't get stock price. Trying again.")
+        return pd.DataFrame()
+    
 def get_mean_price(stock, data_ref):
-    price_series = get_stock_price_series(stock)
+    price_series = try_get_stock_price_series(stock)
     price_series = price_series[(price_series['date'] == data_ref)]
     return price_series['price'].mean()
 
+def get_standard_deviation(stock, years = 5):
+    try:
+        now = datetime.now().date()
+        price_series = try_get_stock_price_series(stock)
+        price_series = price_series[(price_series['date'] <= now)]
+        price_series = price_series[(price_series['date'] >= (now - timedelta(days=1*365)))]
+        return price_series['price'].std()
+    except Exception as err:
+        print(f"Couldn't get standard deviation. Err: {err}")
+        return 0
+    
 def get_dividend_table(stock = 'PETR4', verbose = False):
     try:
         headers = generate_header()
@@ -88,40 +115,42 @@ def get_dividend_table(stock = 'PETR4', verbose = False):
         return dividend_df
     
     except Exception as err:
-        print("Couldn't get table. Error: ", err)
+        print("Couldn't get table. Trying again.")
         return pd.DataFrame()
 
 def get_ceiling_price(asset = 'ITSA4', years = 5, dy = 0.065):
-    now = datetime.now()
-    ceiling_date = date(now.year - 1, 12, 31).strftime("%Y-%m-%d")
-    floor_date = date(now.year - years, 1, 1).strftime("%Y-%m-%d")
-    dividend_table = get_dividend_table(asset)
-    dividend_table.replace('-', date(now.year + 1, 12, 31).strftime("%d/%m/%Y"), inplace = True)
-    #dividend_table['Pagamento'] = pd.to_datetime(dividend_table['Pagamento'], format='%d/%m/%Y')
-    #dividend_table['DATA COM'] = pd.to_datetime(dividend_table['DATA COM'], format='%d/%m/%Y')
-    dividend_table['Pagamento'] = dividend_table['Pagamento'].apply(treat_date)
-    dividend_table['DATA COM'] = dividend_table['DATA COM'].apply(treat_date)
-    dividend_table = dividend_table[(dividend_table['Pagamento'] >= floor_date)]
-    dividend_table = dividend_table[(dividend_table['Pagamento'] <= ceiling_date)]
-    min_date = dividend_table['Pagamento'].min()
-    max_date = dividend_table['Pagamento'].max()
-    diff_years = (max_date.year - min_date.year + 1)
-    min_years = years if years <= diff_years else diff_years
-    ceiling_price = round((dividend_table['Valor'].sum()/min_years)/dy, 2)
-    return ceiling_price
-
+    try:
+        now = datetime.now()
+        ceiling_date = date(now.year - 1, 12, 31).strftime("%Y-%m-%d")
+        floor_date = date(now.year - years, 1, 1).strftime("%Y-%m-%d")
+        dividend_table = try_get_dividend_table(asset)
+        dividend_table.replace('-', date(now.year + 1, 12, 31).strftime("%d/%m/%Y"), inplace = True)
+        #dividend_table['Pagamento'] = pd.to_datetime(dividend_table['Pagamento'], format='%d/%m/%Y')
+        #dividend_table['DATA COM'] = pd.to_datetime(dividend_table['DATA COM'], format='%d/%m/%Y')
+        dividend_table['Pagamento'] = dividend_table['Pagamento'].apply(treat_date)
+        dividend_table['DATA COM'] = dividend_table['DATA COM'].apply(treat_date)
+        dividend_table = dividend_table[(dividend_table['Pagamento'] >= floor_date)]
+        dividend_table = dividend_table[(dividend_table['Pagamento'] <= ceiling_date)]
+        min_date = dividend_table['Pagamento'].min()
+        max_date = dividend_table['Pagamento'].max()
+        diff_years = (max_date.year - min_date.year + 1)
+        min_years = years if years <= diff_years else diff_years
+        ceiling_price = round((dividend_table['Valor'].sum()/min_years)/dy, 2)
+        return ceiling_price
+    except Exception as err:
+        print(f"Couldn't get ceiling price. Err: {err}")
+        return 0
+    
 def generate_header():
     headers = {
         'authority': 'statusinvest.com.br',
         'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9',
         'accept-language': 'pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7',
-        'dnt': '1',
-        'sec-ch-ua': '"Chromium";v="106", "Google Chrome";v="106", "Not;A=Brand";v="99"',
-        'sec-ch-ua-platform': '"Windows"',
-        'upgrade-insecure-requests': '1',
         'user-agent': '',
     }
-    user_agent = random.choice(user_agents)  
+    #user_agent = random.choice(user_agents)  
+    user_agent_rotator = UserAgent(limit=100)
+    user_agent = user_agent_rotator.get_random_user_agent()
     headers['user-agent'] = user_agent
     return headers
 

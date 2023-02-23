@@ -1,4 +1,4 @@
-from module_dividends import get_stock_list, try_get_dividend_table, treat_date, get_ceiling_price, get_mean_price, add_stocks
+from module_dividends import get_stock_list, try_get_dividend_table, treat_date, get_ceiling_price, get_mean_price, add_stocks, get_standard_deviation
 from datetime import datetime, timedelta
 import pandas as pd
 pd.options.mode.chained_assignment = None
@@ -7,7 +7,7 @@ wallet_info_columns = ['stock', 'position', 'allocation', 'profit', 'price', 'la
 today = datetime.now() 
 
 total_dividend_table = pd.DataFrame()
-tracking_stocks = ['RANI3', 'WIZC3']
+tracking_stocks = ['GGBR4', 'UNIP6', 'RANI3', 'WIZC3', 'VIVT3', 'BBSE3', 'CXSE3', 'ENBR3', 'SANB4']
 
 wallet_info = get_stock_list()
 wallet_info = add_stocks(wallet_info, tracking_stocks)
@@ -19,20 +19,23 @@ stock_list = wallet_info['stock'].to_list()
 stock_quantity = wallet_info[['stock', 'quantity', 'price']]
 stock_quantity.columns = ['Acao', 'Quantidade', 'PM Compra']
 stock_quantity['Preco Medio'] = ""
+stock_quantity['Std'] = ""
 stock_quantity['Preco Teto'] = ""
 writer = pd.ExcelWriter("proximos_dividendos.xlsx", engine = 'openpyxl', mode = 'a', date_format = "%d/%m/%Y", if_sheet_exists = 'overlay' )
 
 for stock in stock_list:
-    dividend_table = try_get_dividend_table(stock)
+    dividend_table = try_get_dividend_table(stock, verbose = True)
     if(dividend_table is None):
         continue
     #time.sleep(1.5)
     dividend_table = dividend_table[dividend_table['Pagamento'].apply(treat_date) >= today]
-    total_dividend_table = pd.concat([total_dividend_table, dividend_table.copy()])
-    ceiling_price = get_ceiling_price(stock, 5, 0.07)
+    total_dividend_table = pd.concat([total_dividend_table, dividend_table.copy()], ignore_index=True)
+    ceiling_price = get_ceiling_price(stock, 4, 0.06)
     mean_price = get_mean_price(stock, datetime.now().date() - timedelta(days=1))
+    std_price = get_standard_deviation(stock, 1)
     index_row = stock_quantity[stock_quantity['Acao'] == stock].index
     stock_quantity.loc[index_row, 'Preco Teto'] = ceiling_price
+    stock_quantity.loc[index_row, 'Std'] = round(std_price, 2)
     stock_quantity.loc[index_row, 'Preco Medio'] = mean_price
 
 stock_quantity.to_excel(writer, sheet_name="Quantidades", index = False)
