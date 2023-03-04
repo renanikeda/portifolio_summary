@@ -140,7 +140,10 @@ def get_ceiling_price(asset = 'ITSA4', years = 5, dy = 0.065):
     except Exception as err:
         print(f"Couldn't get ceiling price. Err: {err}")
         return 0
-    
+
+def get_setor(stock = "ITSA4"):
+    url = f"https://statusinvest.com.br/acoes/{stock}"
+
 def generate_header():
     headers = {
         'authority': 'statusinvest.com.br',
