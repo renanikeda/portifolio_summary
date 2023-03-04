@@ -14,6 +14,25 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 stock_list = ["BBAS3", "BRAP4", "BRKM5", "CPLE6", "ITSA4", "PETR4", "TAEE11", "TRPL4", "USIM5"]
 fii_list = []
 
+def is_empty(obj):
+    if obj.__class__.__module__ == 'builtins':
+        return not obj
+    elif 'pandas' in  obj.__class__.__module__:
+        return obj.empty
+    else:
+        raise Exception('Type not defined in is_empty function')
+    
+def try_get_function(func = lambda x: x, limit = 4, *args, **kargs):
+    response = {}
+    backoff = 1
+    attempt = 0
+    while (is_empty(response) and attempt < limit):
+        if attempt > 0 : print(f"Attempt {attempt} in {func.__doc__.strip()}")
+        time.sleep(attempt*backoff)
+        response = func(*args, **kargs)
+        attempt += 1
+    return response
+
 def add_stocks(wallet, stocks):
     wallet_cols = wallet.columns.to_list()
     new_stocks = pd.DataFrame([[stock, *[0]*(len(wallet_cols) - 1)] for stock in stocks], columns = wallet_cols)
@@ -71,6 +90,9 @@ def try_get_stock_price_series(stock = "PETR4", limit = 5):
     return prices_df
 
 def get_stock_price_series(stock = 'ITSA4'):
+    """
+    Get Stock Price Function
+    """
     try:
         headers = generate_header()
         response = requests.post('https://statusinvest.com.br/acao/tickerprice', data = { 'ticker': stock, 'type': 4 }, headers = headers)
@@ -81,16 +103,16 @@ def get_stock_price_series(stock = 'ITSA4'):
     except Exception as err:
         print(f"Couldn't get stock price. Trying again.")
         return pd.DataFrame()
-    
+
 def get_mean_price(stock, data_ref):
-    price_series = try_get_stock_price_series(stock)
+    price_series = try_get_function(get_stock_price_series, 4, stock)
     price_series = price_series[(price_series['date'] == data_ref)]
     return price_series['price'].mean()
 
 def get_standard_deviation(stock, years = 5):
     try:
         now = datetime.now().date()
-        price_series = try_get_stock_price_series(stock)
+        price_series = try_get_function(get_stock_price_series, 4, stock)
         price_series = price_series[(price_series['date'] <= now)]
         price_series = price_series[(price_series['date'] >= (now - timedelta(days=1*365)))]
         return price_series['price'].std()
@@ -99,6 +121,9 @@ def get_standard_deviation(stock, years = 5):
         return 0
     
 def get_dividend_table(stock = 'PETR4', verbose = False):
+    """
+    Get Dividend Table Function
+    """
     try:
         headers = generate_header()
         response = requests.get(f'https://statusinvest.com.br/acao/companytickerprovents?ticker={stock}&chartProventsType=2', timeout = 3, verify = True, headers = headers)
@@ -123,7 +148,7 @@ def get_ceiling_price(asset = 'ITSA4', years = 5, dy = 0.065):
         now = datetime.now()
         ceiling_date = date(now.year - 1, 12, 31).strftime("%Y-%m-%d")
         floor_date = date(now.year - years, 1, 1).strftime("%Y-%m-%d")
-        dividend_table = try_get_dividend_table(asset)
+        dividend_table = try_get_function(get_dividend_table, 4, asset)
         dividend_table.replace('-', date(now.year + 1, 12, 31).strftime("%d/%m/%Y"), inplace = True)
         #dividend_table['Pagamento'] = pd.to_datetime(dividend_table['Pagamento'], format='%d/%m/%Y')
         #dividend_table['DATA COM'] = pd.to_datetime(dividend_table['DATA COM'], format='%d/%m/%Y')
@@ -141,9 +166,25 @@ def get_ceiling_price(asset = 'ITSA4', years = 5, dy = 0.065):
         print(f"Couldn't get ceiling price. Err: {err}")
         return 0
 
-def get_setor(stock = "ITSA4"):
-    url = f"https://statusinvest.com.br/acoes/{stock}"
+def get_sector(stock = "ITSA4"):
+    """
+    Get Sector Function
+    """
+    try:
+        headers = generate_header()
+        response = requests.get(f'https://statusinvest.com.br/acoes/{stock}', timeout = 3, verify = True, headers = headers)
+        soup = BeautifulSoup(response.text, "html.parser")
 
+        setor = soup.find('span', text = "Setor de Atuação").find_parent().div.a.strong.text
+        subsetor = soup.find('span', text = "Subsetor de Atuação").find_parent().div.a.strong.text
+        segmento = soup.find('span', text = "Segmento de Atuação").find_parent().div.a.strong.text
+
+        return { 'setor': setor, 'subsetor': subsetor, 'segmento': segmento }
+    
+    except Exception as err:
+        print("Couldn't get Sector info. Error: ", err)
+        return {}
+    
 def generate_header():
     headers = {
         'authority': 'statusinvest.com.br',
