@@ -1,6 +1,7 @@
 from bs4 import BeautifulSoup
 from random_user_agent.user_agent import UserAgent
 from datetime import datetime, date, timedelta
+from cachetools import cached, TTLCache, keys
 import pandas as pd
 import json
 import requests
@@ -10,10 +11,25 @@ import time
 import re
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-
+cache = TTLCache(maxsize=100, ttl=5*60)
 stock_list = ["BBAS3", "BRAP4", "BRKM5", "CPLE6", "ITSA4", "PETR4", "TAEE11", "TRPL4", "USIM5"]
 fii_list = []
 
+def join_delimiter(arg_list, delimiter = '_'):
+    if isinstance(arg_list[0], tuple) or isinstance(arg_list[0], list):
+        return [delimiter.join(map(str, el)) for el in arg_list]
+    else:
+        return delimiter.join(map(str, arg_list))
+
+def cache_key(*args, **kwargs):
+    key_args, key_kwargs = ['', '']
+    if args:
+        key_args = join_delimiter(args)
+    if kwargs:
+        key_kwargs = join_delimiter(join_delimiter((sorted(kwargs.items()))))
+
+    return key_args + '_' + key_kwargs if key_args and key_kwargs else key_args or key_kwargs
+    
 def is_empty(obj):
     if obj.__class__.__module__ == 'builtins':
         return not obj
@@ -22,7 +38,7 @@ def is_empty(obj):
     else:
         raise Exception('Type not defined in is_empty function')
     
-def try_get_function(func = lambda x: x, limit = 4, *args, **kargs):
+def try_get_function(func = lambda x: x, limit = 5, *args, **kargs):
     response = {}
     backoff = 1
     attempt = 0
@@ -89,6 +105,7 @@ def try_get_stock_price_series(stock = "PETR4", limit = 5):
         attempt += 1
     return prices_df
 
+@cached(cache, key = lambda *args, **kwargs: cache_key('get_stock_price_series', *args, **kwargs))
 def get_stock_price_series(stock = 'ITSA4'):
     """
     Get Stock Price Function
@@ -101,18 +118,19 @@ def get_stock_price_series(stock = 'ITSA4'):
         prices_df['date'] = prices_df['date'].apply(lambda date: treat_date(date, "%d/%m/%y %H:%M").date())
         return prices_df
     except Exception as err:
-        print(f"Couldn't get stock price. Trying again.")
+        print(f"Couldn't get stock price. Trying again. Error: {err}")
+        cache.clear()
         return pd.DataFrame()
 
 def get_mean_price(stock, data_ref):
-    price_series = try_get_function(get_stock_price_series, 4, stock)
+    price_series = try_get_function(get_stock_price_series, stock = stock)
     price_series = price_series[(price_series['date'] == data_ref)]
     return price_series['price'].mean()
 
 def get_standard_deviation(stock, years = 5):
     try:
         now = datetime.now().date()
-        price_series = try_get_function(get_stock_price_series, 4, stock)
+        price_series = try_get_function(get_stock_price_series, stock = stock)
         price_series = price_series[(price_series['date'] <= now)]
         price_series = price_series[(price_series['date'] >= (now - timedelta(days=1*365)))]
         return price_series['price'].std()
@@ -120,6 +138,7 @@ def get_standard_deviation(stock, years = 5):
         print(f"Couldn't get standard deviation. Err: {err}")
         return 0
     
+@cached(cache, key = lambda *args, **kwargs: cache_key('get_dividend_table', *args, **kwargs))
 def get_dividend_table(stock = 'PETR4', verbose = False):
     """
     Get Dividend Table Function
@@ -141,6 +160,7 @@ def get_dividend_table(stock = 'PETR4', verbose = False):
     
     except Exception as err:
         print("Couldn't get table. Trying again.")
+        cache.clear()
         return pd.DataFrame()
 
 def get_ceiling_price(asset = 'ITSA4', years = 5, dy = 0.065):
@@ -148,7 +168,7 @@ def get_ceiling_price(asset = 'ITSA4', years = 5, dy = 0.065):
         now = datetime.now()
         ceiling_date = date(now.year - 1, 12, 31).strftime("%Y-%m-%d")
         floor_date = date(now.year - years, 1, 1).strftime("%Y-%m-%d")
-        dividend_table = try_get_function(get_dividend_table, 4, asset)
+        dividend_table = try_get_function(get_dividend_table, stock = asset)
         dividend_table.replace('-', date(now.year + 1, 12, 31).strftime("%d/%m/%Y"), inplace = True)
         #dividend_table['Pagamento'] = pd.to_datetime(dividend_table['Pagamento'], format='%d/%m/%Y')
         #dividend_table['DATA COM'] = pd.to_datetime(dividend_table['DATA COM'], format='%d/%m/%Y')

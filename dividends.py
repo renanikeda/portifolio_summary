@@ -1,4 +1,4 @@
-from module_dividends import get_stock_list, get_dividend_table, treat_date, get_ceiling_price, get_mean_price, add_stocks, get_standard_deviation, get_sector, try_get_function
+from module_dividends import get_stock_list, get_dividend_table, treat_date, get_ceiling_price, get_mean_price, add_stocks, get_standard_deviation, get_sector, try_get_function, cache
 from datetime import datetime, timedelta
 import pandas as pd
 pd.options.mode.chained_assignment = None
@@ -19,10 +19,10 @@ stock_list = wallet_info['stock'].to_list()
 stock_quantity = wallet_info[['stock', 'quantity', 'price']]
 stock_quantity.columns = ['Acao', 'Quantidade', 'PM Compra']
 
-writer = pd.ExcelWriter("proximos_dividendos.xlsx", engine = 'openpyxl', mode = 'a', date_format = "%d/%m/%Y", if_sheet_exists = 'overlay' )
+writer = pd.ExcelWriter("Resumo Carteira.xlsx", engine = 'openpyxl', mode = 'a', date_format = "%d/%m/%Y", if_sheet_exists = 'overlay' )
 
 for stock in stock_list:
-    dividend_table = try_get_function(get_dividend_table, 4, stock, verbose = True)
+    dividend_table = try_get_function(get_dividend_table, stock = stock, verbose = True)
     if(dividend_table is None):
         continue
     #time.sleep(1.5)
@@ -35,7 +35,7 @@ for stock in stock_list:
     stock_quantity.loc[index_row, 'Preco Teto'] = ceiling_price
     stock_quantity.loc[index_row, 'Std'] = round(std_price, 2)
     stock_quantity.loc[index_row, 'Preco Medio'] = mean_price
-    setores = try_get_function(get_sector, 5, stock)
+    setores = try_get_function(get_sector, stock = stock)
     stock_quantity.loc[index_row, 'Setor'] = setores.get('setor', '')
     stock_quantity.loc[index_row, 'Sub Setor'] = setores.get('subsetor', '')
     stock_quantity.loc[index_row, 'Segmento'] = setores.get('segmento', '')
