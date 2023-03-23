@@ -1,4 +1,4 @@
-from module_dividends import get_stock_list, get_dividend_table, treat_date, get_ceiling_price, get_mean_price, add_stocks, get_standard_deviation, get_sector, try_get_function, cache
+from module_dividends import get_stock_list, get_dividend_table, treat_date, get_ceiling_price, get_mean_price, add_stocks, get_standard_deviation, get_sector, try_get_function, get_sector_distribution
 from datetime import datetime, timedelta
 import pandas as pd
 pd.options.mode.chained_assignment = None
@@ -11,6 +11,7 @@ tracking_stocks = ['GGBR4', 'VIVT3', 'BBSE3']
 
 wallet_info = get_stock_list()
 wallet_info = add_stocks(wallet_info, tracking_stocks)
+wallet_info = wallet_info[wallet_info['stock'] != "IVVB11"]
 print(wallet_info)
 stock_list = wallet_info['stock'].to_list()
 
@@ -40,7 +41,11 @@ for stock in stock_list:
     stock_quantity.loc[index_row, 'Sub Setor'] = setores.get('subsetor', '')
     stock_quantity.loc[index_row, 'Segmento'] = setores.get('segmento', '')
 
+stock_quantity['Total'] = stock_quantity['Quantidade'] * stock_quantity['Preco Medio']
+
+#distribution = get_sector_distribution(stock_quantity)
 stock_quantity.to_excel(writer, sheet_name="Quantidades", index = False)
+#distribution.to_excel(writer, sheet_name="Dados", index = False)
 total_dividend_table = total_dividend_table.join(stock_quantity.set_index('Acao')[['Quantidade']], on = "Acao")
 total_dividend_table["A receber"] = total_dividend_table['Quantidade'] * total_dividend_table['Valor']
 total_dividend_table.to_excel(writer, sheet_name = "Dividendos", index = False, float_format="%.2f")

@@ -1,4 +1,5 @@
 from bs4 import BeautifulSoup
+from typing import TypeVar
 from random_user_agent.user_agent import UserAgent
 from datetime import datetime, date, timedelta
 from cachetools import cached, TTLCache, keys
@@ -29,7 +30,7 @@ def cache_key(*args, **kwargs):
         key_kwargs = join_delimiter(join_delimiter((sorted(kwargs.items()))))
 
     return key_args + '_' + key_kwargs if key_args and key_kwargs else key_args or key_kwargs
-    
+
 def is_empty(obj):
     if obj.__class__.__module__ == 'builtins':
         return not obj
@@ -37,10 +38,19 @@ def is_empty(obj):
         return obj.empty
     else:
         raise Exception('Type not defined in is_empty function')
-    
+
+def get_sector_distribution(stock_quantity: pd.DataFrame, groupBy = 'Setor'):
+    unique_sectors = stock_quantity[groupBy].unique()
+    dados = {}
+    soma_total = (stock_quantity['Quantidade']*stock_quantity['Preco Medio']).sum()
+    for sector in unique_sectors:
+        sector_stock_quantity = stock_quantity[stock_quantity[groupBy] == sector]
+        dados[sector] = round((sector_stock_quantity['Quantidade']*sector_stock_quantity['Preco Medio']).sum()/soma_total, 4)
+    return pd.DataFrame([dados.values()], columns = dados.keys())
+
 def try_get_function(func = lambda x: x, limit = 5, *args, **kargs):
     response = {}
-    backoff = 1
+    backoff = 2
     attempt = 0
     while (is_empty(response) and attempt < limit):
         if attempt > 0 : print(f"Attempt {attempt} in {func.__doc__.strip()}")
@@ -156,6 +166,7 @@ def get_dividend_table(stock = 'PETR4', verbose = False):
             if verbose: print(f'{stock} Table Found!')
         except:
             print(f'It was not possible to rearrange dataframe or found {stock}')
+            cache.clear()
         return dividend_df
     
     except Exception as err:
@@ -238,3 +249,6 @@ user_agents = [
     'Mozilla/5.0 (Linux; Android 4.4.3; KFTHWI Build/KTU84M) AppleWebKit/537.36 (KHTML, like Gecko) Silk/47.1.79 like Chrome/47.0.2526.80 Safari/537.36',
     'Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:15.0) Gecko/20100101 Firefox/15.0.1'
 ] 
+
+#df = pd.read_excel('Resumo Carteira.xlsx', 'Quantidades')
+#get_sector_distribution(df)
