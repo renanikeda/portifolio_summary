@@ -1,4 +1,4 @@
-from module_dividends import get_stock_list, get_dividend_table, treat_date, get_ceiling_price, get_mean_price, add_stocks, get_standard_deviation, get_sector, try_get_function, get_sector_distribution
+from module_summary import get_stock_list, get_dividend_table, treat_date, get_ceiling_price, get_mean_price, add_stocks, get_standard_deviation, get_sector, try_get_function, get_sector_distribution
 from datetime import datetime, timedelta
 import pandas as pd
 pd.options.mode.chained_assignment = None
