@@ -1,11 +1,6 @@
-from bs4 import BeautifulSoup
+from utils import generate_header, try_get_function, get_ceiling_price_bazin, get_fair_price_graham
 from typing import TypeVar
-from datetime import datetime, date, timedelta
-from utils import generate_header, try_get_function
 import pandas as pd
-import numpy as np
-import json
-import requests
 import os
 import warnings
 
@@ -42,32 +37,7 @@ class Portifolio():
 
         self.portifolio.to_excel(self.writer, sheet_name = "teste", index = False, float_format="%.2f")
 
-    @try_get_function
-    def get_dividend_table(self, stock = 'PETR4', verbose = False):
-        """
-        Get Dividend Table Function
-        """
-        try:
-            headers = generate_header()
-            response = requests.get(f'https://statusinvest.com.br/acao/companytickerprovents?ticker={stock}&chartProventsType=2', timeout = 3, verify = True, headers = headers)
-            json_obj = json.loads(response.text)
-            dividend_df = pd.DataFrame(json_obj.get('assetEarningsModels', {}))
-            try:
-                dividend_df.drop(['y', 'm', 'd', 'etd', 'sv', 'sov', 'adj'], axis = 1, inplace = True)
-                dividend_df.rename(columns={"ed": "DATA COM", "pd": "Pagamento", 'v': 'Valor', 'et': 'Tipo'}, inplace = True)
-                dividend_df.insert(0, 'Acao', stock)
-                dividend_df = dividend_df[['Acao', 'Tipo', 'DATA COM', 'Pagamento', 'Valor']]
-                if verbose: print(f'{stock} Table Found!')
-            except:
-                print(f'It was not possible to rearrange dataframe or found {stock}')
-            return dividend_df
-        
-        except Exception as err:
-            print("Couldn't get table. Trying again.")
-            return pd.DataFrame()
-
-
-
 portifolio = Portifolio('C:/Users/renan/OneDrive/Documentos/PYTHON/portifolio_summary/PosicaoDetalhada.xlsx')
-print(portifolio.portifolio)
-print(portifolio.get_dividend_table())
+#print(portifolio.portifolio)
+#print(portifolio.get_dividend_table())
+print(get_fair_price_graham())
