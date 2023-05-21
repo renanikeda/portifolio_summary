@@ -1,6 +1,7 @@
 from random_user_agent.user_agent import UserAgent
 from datetime import datetime, date, timedelta
 from bs4 import BeautifulSoup
+import yfinance as yf
 import pandas as pd
 import numpy as np
 import requests
@@ -8,6 +9,7 @@ import json
 import time
 import re
 
+today = datetime.now()
 def generate_header():
     headers = {
         'authority': 'statusinvest.com.br',
@@ -105,18 +107,17 @@ def get_sector(stock = "ITSA4"):
         print("Couldn't get Sector info. Error: ", err)
         return {}
 
-def get_ceiling_price_bazin(asset = 'ITSA4', years = 5, dividend_yield = 7/100):
+def get_ceiling_price_bazin(dividend_table, years = 5, dividend_yield = 7/100):
     try:
         now = datetime.now()
         ceiling_date = date(now.year, 1, 1).strftime("%Y-%m-%d")
         floor_date = date(now.year - years, 1, 1).strftime("%Y-%m-%d")
-        dividend_table = get_dividend_table(asset)
         dividend_table.replace('-', date(now.year + 1, 1, 1).strftime("%d/%m/%Y"), inplace = True)
         dividend_table['Pagamento'] = dividend_table['Pagamento'].apply(treat_date)
         #dividend_table['DATA COM'] = dividend_table['DATA COM'].apply(treat_date)
         dividend_table = dividend_table[(dividend_table['Pagamento'] >= floor_date)]
         dividend_table = dividend_table[(dividend_table['Pagamento'] <= ceiling_date)]
-        min_date = dividend_table['Pagamento'].min()
+        min_date = dividend_table['Pagamento'].min() 
         max_date = dividend_table['Pagamento'].max()
         diff_years = (max_date.year - min_date.year + 1)
         min_years = years if years <= diff_years else diff_years
@@ -135,3 +136,34 @@ def get_fair_price_graham(asset = 'ITSA4'):
     VPA = treat_numbers(soup.find('h3', text = "VPA").find_parent().find_parent().div.strong.text)
     GRAHAM_CTE = 22.5
     return np.sqrt(GRAHAM_CTE*LPA*VPA)
+
+def get_sector(stock = "ITSA4"):
+    """
+    Get Sector Function
+    """
+    try:
+        headers = generate_header()
+        response = requests.get(f'https://statusinvest.com.br/acoes/{stock}', timeout = 3, verify = True, headers = headers)
+        soup = BeautifulSoup(response.text, "html.parser")
+
+        setor = soup.find('span', text = "Setor de Atuação").find_parent().div.a.strong.text
+        subsetor = soup.find('span', text = "Subsetor de Atuação").find_parent().div.a.strong.text
+        segmento = soup.find('span', text = "Segmento de Atuação").find_parent().div.a.strong.text
+
+        return { 'setor': setor, 'subsetor': subsetor, 'segmento': segmento }
+    
+    except Exception as err:
+        print("Couldn't get Sector info. Error: ", err)
+        return {}
+    
+def stock_last_price(stock = 'PETR4'):
+    stock = yf.Ticker(stock + '.SA')
+    return stock.history(period="1d")['Close'][0]
+
+def stock_mean_price(stock = 'PETR4', period = '1y'):
+    stock = yf.Ticker(stock + '.SA')
+    return stock.history(period=period)['Close'].mean()
+
+def stock_std_price(stock = 'PETR4', period = '1y'):
+    stock = yf.Ticker(stock + '.SA')
+    return stock.history(period=period)['Close'].std()

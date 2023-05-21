@@ -7,7 +7,7 @@ wallet_info_columns = ['stock', 'position', 'allocation', 'profit', 'price', 'la
 today = datetime.now() 
 
 total_dividend_table = pd.DataFrame()
-tracking_stocks = ['GGBR4', 'VIVT3', 'BBSE3']
+tracking_stocks = ['GGBR4', 'BBSE3']
 
 wallet_info = get_stock_list()
 wallet_info = add_stocks(wallet_info, tracking_stocks)

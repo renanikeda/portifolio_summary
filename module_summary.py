@@ -50,7 +50,7 @@ def get_sector_distribution(stock_quantity: pd.DataFrame, groupBy = 'Setor'):
 
 def try_get_function(func = lambda x: x, limit = 5, *args, **kargs):
     response = {}
-    backoff = 2
+    backoff = 5
     attempt = 0
     while (is_empty(response) and attempt < limit):
         if attempt > 0 : print(f"Attempt {attempt} in {func.__doc__.strip()}")
